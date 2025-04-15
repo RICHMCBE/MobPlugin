@@ -2,7 +2,16 @@
 name: MobPlugin
 author: IvanCraft623
 main: IvanCraft623\MobPlugin\MobPlugin
-version: 0.0.1
+version: 0.1.1
 api: 5.6.0
 description: "Implements Mobs like Vanilla!"
+
+permissions:
+  mobplugin.command.spawner.cancel:
+    description: "Allows the user to spawn mobs"
+    default: op
+
+  mobplugin.command.spawner:
+    description: "Allows the user to manage mob spawners"
+    default: op
 ...
