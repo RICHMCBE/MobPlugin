@@ -23,6 +23,8 @@ declare(strict_types=1);
 
 namespace IvanCraft623\MobPlugin;
 
+use IvanCraft623\MobPlugin\command\SpawnerCancelCommand;
+use IvanCraft623\MobPlugin\command\SpawnerCommand;
 use IvanCraft623\MobPlugin\entity\ambient\Bat;
 use IvanCraft623\MobPlugin\entity\animal\Chicken;
 use IvanCraft623\MobPlugin\entity\animal\Cow;
@@ -39,6 +41,8 @@ use IvanCraft623\MobPlugin\entity\monster\Endermite;
 use IvanCraft623\MobPlugin\entity\monster\Slime;
 use IvanCraft623\MobPlugin\entity\monster\Spider;
 use IvanCraft623\MobPlugin\item\ExtraItemRegisterHelper;
+use IvanCraft623\MobPlugin\spawner\SpawnerHighlightTask;
+use IvanCraft623\MobPlugin\spawner\SpawnerManager;
 use IvanCraft623\MobPlugin\utils\Utils;
 
 use pocketmine\entity\AttributeFactory;
@@ -53,72 +57,98 @@ use pocketmine\world\World;
 use function mt_rand;
 
 class MobPlugin extends PluginBase {
-	use SingletonTrait;
+    use SingletonTrait;
 
-	public const ALL_ENTITIES = [
-		Bat::class,
-		Chicken::class,
-		Cow::class,
-		MooshroomCow::class,
-		Pig::class,
-		Sheep::class,
-		IronGolem::class,
-		SnowGolem::class,
-		CaveSpider::class,
-		Creeper::class,
-		Enderman::class,
-		Endermite::class,
-		Slime::class,
-		Spider::class
-	];
+    private MobPluginListener $spawnerListener;
 
-	private ?Random $random = null;
+    public const ALL_ENTITIES = [
+        Bat::class,
+        Chicken::class,
+        Cow::class,
+        MooshroomCow::class,
+        Pig::class,
+        Sheep::class,
+        IronGolem::class,
+        SnowGolem::class,
+        CaveSpider::class,
+        Creeper::class,
+        Enderman::class,
+        Endermite::class,
+        Slime::class,
+        Spider::class
+    ];
 
-	public function onLoad() : void {
-		self::setInstance($this);
-	}
+    private ?Random $random = null;
+    private SpawnerManager $spawnerManager;
 
-	public function onEnable() : void {
-		CustomTimings::init();
+    public function onLoad() : void {
+        self::setInstance($this);
+    }
 
-		$this->registerAttributes();
-		$this->registerEntities();
+    public function onEnable() : void {
+        CustomTimings::init();
 
-		ExtraItemRegisterHelper::init();
+        $this->registerAttributes();
+        $this->registerEntities();
 
-		$this->getServer()->getPluginManager()->registerEvents(new EventListener(), $this);
-	}
+        ExtraItemRegisterHelper::init();
 
-	public function getRandom() : Random {
-		if ($this->random === null) {
-			$this->random = new Random(mt_rand());
-		}
-		return $this->random;
-	}
+        // 스포너 매니저 초기화
+        $this->spawnerManager = new SpawnerManager($this);
 
-	private function registerAttributes() : void{
-		$factory = AttributeFactory::getInstance();
+        // 명령어 등록
+        $this->getServer()->getCommandMap()->register("mobspawner", new SpawnerCommand($this, $this->spawnerManager));
+        $this->getServer()->getCommandMap()->register("mobspawncancel", new SpawnerCancelCommand($this));
 
-		$factory->register(CustomAttributes::ATTACK_KNOCKBACK, 0.00, 340282346638528859811704183484516925440.00, 0.4, false);
-	}
+        $this->getServer()->getPluginManager()->registerEvents(new EventListener(), $this);
 
-	private function registerEntities() : void{
-		$factory = EntityFactory::getInstance();
+        // 스포너 관련 이벤트 리스너 등록
+        $this->spawnerListener = new MobPluginListener($this->spawnerManager);
+        $this->getServer()->getPluginManager()->registerEvents($this->spawnerListener, $this);
 
-		foreach (self::ALL_ENTITIES as $entityClass) {
-			$this->registerEntity($factory, $entityClass);
-		}
-	}
+        // 스포너 하이라이트 태스크 추가 (10초마다)
+        $this->getScheduler()->scheduleRepeatingTask(
+            new SpawnerHighlightTask($this->spawnerManager),
+            10 * 20 // 10초마다
+        );
 
-	/**
-	 * @phpstan-param class-string<Entity> $entityClass
-	 */
-	private function registerEntity(EntityFactory $factory, string $entityClass) : void{
-		//Did you know that bedrock entity's save ids are the same as network ids?
-		$entityId = $entityClass::getNetworkTypeId();
+        $this->getLogger()->info("MobPlugin has been enabled!");
+    }
 
-		$factory->register($entityClass, function(World $world, CompoundTag $nbt) use ($entityClass) : Entity{
-			return new $entityClass(Helper::parseLocation($nbt, $world), $nbt);
-		}, [$entityId, Utils::getEntityNameFromId($entityId)]);
-	}
+    public function getSpawnerListener(): ?MobPluginListener {
+        return $this->spawnerListener;
+    }
+
+    public function getRandom() : Random {
+        if ($this->random === null) {
+            $this->random = new Random(mt_rand());
+        }
+        return $this->random;
+    }
+
+    private function registerAttributes() : void{
+        $factory = AttributeFactory::getInstance();
+
+        $factory->register(CustomAttributes::ATTACK_KNOCKBACK, 0.00, 340282346638528859811704183484516925440.00, 0.4, false);
+    }
+
+    private function registerEntities() : void{
+        $factory = EntityFactory::getInstance();
+
+        foreach (self::ALL_ENTITIES as $entityClass) {
+            $this->registerEntity($factory, $entityClass);
+        }
+    }
+
+    /**
+     * @phpstan-param class-string<Entity> $entityClass
+     */
+    private function registerEntity(EntityFactory $factory, string $entityClass) : void{
+        //Did you know that bedrock entity's save ids are the same as network ids?
+        $entityId = $entityClass::getNetworkTypeId();
+
+        $factory->register($entityClass, function(World $world, CompoundTag $nbt) use ($entityClass) : Entity{
+            return new $entityClass(Helper::parseLocation($nbt, $world), $nbt);
+        }, [$entityId, Utils::getEntityNameFromId($entityId)]);
+    }
 }
