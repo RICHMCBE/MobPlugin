@@ -88,8 +88,12 @@ class SpawnerManager {
     }
 
     private function highlightNearbySpawners(Player $player) : void {
-        // OP 권한 체크
-        if (!$this->plugin->getServer()->isOp($player->getName())) {
+        // OP 권한 체크 및 디버깅
+        $isOp = $this->plugin->getServer()->isOp($player->getName());
+        var_dump('Player: ' . $player->getName(), 'Is OP: ' . ($isOp ? 'true' : 'false'));
+
+        // OP 권한이 없으면 함수 종료
+        if (!$isOp) {
             return;
         }
 
@@ -108,6 +112,9 @@ class SpawnerManager {
                     // 새로운 FloatingText 관리자를 사용하여 홀로그램 추가
                     $floatingTextManager = new SpawnerFloatingTextManager($this->plugin);
                     $floatingTextManager->add($player, $spawnerPos, $spawner);
+
+                    // 스포너 정보 디버깅
+                    var_dump('Spawner Found', 'Spawner ID: ' . $spawnerId, 'Distance: ' . $distance);
                 }
             }
         }
