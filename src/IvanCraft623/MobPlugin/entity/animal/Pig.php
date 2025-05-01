@@ -53,9 +53,7 @@ class Pig extends Animal implements ItemSteerable, Saddleable {
 
 	public static function FOOD_ITEMS() : ItemSet{
 		return (new ItemSet())->add(
-			VanillaItems::CARROT(),
-			VanillaItems::BEETROOT(),
-			VanillaItems::POTATO()
+            VanillaItems::RAW_PORKCHOP()->setCount(mt_rand(0,3))
 		);
 	}
 

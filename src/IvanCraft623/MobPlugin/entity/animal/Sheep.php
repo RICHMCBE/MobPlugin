@@ -217,11 +217,7 @@ class Sheep extends Animal implements Shearable{
 	public function getDrops() : array{
 		$drops = [];
 		if (!$this->isBaby()) {
-			$drops[] = ($this->shouldDropCookedItems() ? VanillaItems::COOKED_MUTTON() : VanillaItems::RAW_MUTTON())->setCount(mt_rand(1, 2));
-
-			if (!$this->isSheared()) {
-				$drops[] = VanillaBlocks::WOOL()->setColor($this->getColor())->asItem();
-			}
+			$drops[] = ($this->shouldDropCookedItems() ? : VanillaItems::RAW_MUTTON())->setCount(mt_rand(1, 2));
 		}
 
 		return $drops;
