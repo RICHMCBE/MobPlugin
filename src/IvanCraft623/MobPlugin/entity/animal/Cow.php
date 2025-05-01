@@ -23,6 +23,7 @@ declare(strict_types=1);
 
 namespace IvanCraft623\MobPlugin\entity\animal;
 
+use customiesdevs\customies\item\CustomiesItemFactory;
 use IvanCraft623\MobPlugin\entity\AgeableMob;
 use IvanCraft623\MobPlugin\entity\ai\goal\BreedGoal;
 use IvanCraft623\MobPlugin\entity\ai\goal\FloatGoal;
@@ -92,15 +93,22 @@ class Cow extends Animal {
 		return new Cow($this->getLocation());
 	}
 
-	public function getDrops() : array{
-		$drops = [];
-		if (!$this->isBaby()) {
-			$drops = [
-				VanillaItems::LEATHER()->setCount(mt_rand(0, 2)),
-				($this->shouldDropCookedItems() ? VanillaItems::STEAK() : VanillaItems::RAW_BEEF())->setCount(mt_rand(1, 3))
-			];
-		}
+    public function getDrops() : array{
+        $drops = [];
+        if (!$this->isBaby()) {
+            $drops = [
+                VanillaItems::LEATHER()->setCount(mt_rand(0, 2)),
+                ($this->shouldDropCookedItems() ? VanillaItems::STEAK() : VanillaItems::RAW_BEEF())->setCount(mt_rand(1, 3))
+            ];
 
-		return $drops;
-	}
+            // 우유 아이템 추가 (20% 확률로 드롭)
+            if (mt_rand(1, 5) === 1) {
+                // Customies 플러그인에서 우유 아이템 가져오기
+                $milk = CustomiesItemFactory::getInstance()->get("cloud:milk");
+                $drops[] = $milk;
+            }
+        }
+
+        return $drops;
+    }
 }

@@ -55,10 +55,7 @@ class Chicken extends Animal {
 
 	public static function FOOD_ITEMS() : ItemSet{
 		return (new ItemSet())->add(
-			VanillaItems::WHEAT_SEEDS(),
-			VanillaItems::BEETROOT_SEEDS(),
-			VanillaItems::MELON_SEEDS(),
-			VanillaItems::PUMPKIN_SEEDS()
+            VanillaItems::RAW_CHICKEN()->setCount(mt_rand(0,3))
 			//TODO: pitcher pod & torchflower seeds
 		);
 	}
