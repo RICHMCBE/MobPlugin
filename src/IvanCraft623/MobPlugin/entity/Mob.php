@@ -118,6 +118,7 @@ abstract class Mob extends Living {
 		$this->sensing = new Sensing($this);
 
 		$this->registerGoals();
+        $this->setCanSaveWithChunk(false);
 	}
 
 	public function saveNBT() : CompoundTag{
@@ -219,6 +220,10 @@ abstract class Mob extends Living {
 	final public function getMaxLifeTime() : int{ // [체리칩 지시] 몹 수명: 무조건 5분 -> 재정의 못하도록 final로 변경
 		return 6000;
 	}
+
+    final public function canSaveWithChunk() : bool{
+        return false; // [체리칩 지시] 몹 저장 X
+    }
 
     public function getAttackDamage() : float{
 		return $this->attackDamageAttr->getValue();
