@@ -32,6 +32,7 @@ use pocketmine\block\BlockTypeIds;
 use pocketmine\block\VanillaBlocks;
 use pocketmine\entity\Entity;
 use pocketmine\entity\Location;
+use pocketmine\event\block\BlockBreakEvent;
 use pocketmine\event\block\BlockPlaceEvent;
 use pocketmine\event\entity\EntityDeathEvent;
 use pocketmine\event\entity\EntityDespawnEvent;
@@ -109,6 +110,29 @@ class EventListener implements Listener {
 
 		return $e;
 	}
+
+    /**
+     * 블록 파괴 이벤트 처리
+     * @priority NORMAL
+     * @ignoreCancelled
+     */
+    public function onBlockBreak(BlockBreakEvent $event): void {
+        $block = $event->getBlock();
+        $player = $event->getPlayer();
+        $position = $block->getPosition();
+
+        // 스포너 매니저 가져오기
+        $spawnerManager = $this->plugin->getSpawnerManager();
+        if ($spawnerManager === null) {
+            return;
+        }
+
+        // 스포너 블록인지 확인 및 처리
+        if ($spawnerManager->onSpawnerBreak($position, $player)) {
+            // 스포너가 제거됐으면 블록 파괴 이벤트 취소
+            $event->cancel();
+        }
+    }
 
     /**
      * 엔티티 디스폰 이벤트 처리
