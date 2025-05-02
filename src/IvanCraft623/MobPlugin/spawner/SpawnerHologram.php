@@ -225,6 +225,7 @@ class SpawnerHologram {
 
     /**
      * 플레이어가 스포너 블록을 우클릭했을 때 호출됩니다.
+     * 월드 보호 설정에 관계없이 항상 홀로그램을 표시합니다.
      */
     public function onSpawnerInteract(Player $player, Position $position): bool {
         // 스포너 매니저 가져오기

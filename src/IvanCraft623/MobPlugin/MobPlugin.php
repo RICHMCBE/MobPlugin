@@ -42,6 +42,7 @@ use IvanCraft623\MobPlugin\entity\monster\Slime;
 use IvanCraft623\MobPlugin\entity\monster\Spider;
 use IvanCraft623\MobPlugin\item\ExtraItemRegisterHelper;
 use IvanCraft623\MobPlugin\spawner\SpawnerHighlightTask;
+use IvanCraft623\MobPlugin\spawner\SpawnerHologram;
 use IvanCraft623\MobPlugin\spawner\SpawnerManager;
 use IvanCraft623\MobPlugin\utils\Utils;
 
@@ -80,6 +81,7 @@ class MobPlugin extends PluginBase {
 
     private ?Random $random = null;
     private SpawnerManager $spawnerManager;
+    private ?SpawnerHologram $spawnerHologram = null;
 
     public function onLoad() : void {
         self::setInstance($this);
@@ -95,6 +97,7 @@ class MobPlugin extends PluginBase {
 
         // 스포너 매니저 초기화
         $this->spawnerManager = new SpawnerManager($this);
+        $this->spawnerHologram = new SpawnerHologram($this);
 
         // 명령어 등록
         $this->getServer()->getCommandMap()->register("mobspawner", new SpawnerCommand($this, $this->spawnerManager));
@@ -114,6 +117,20 @@ class MobPlugin extends PluginBase {
 
     public function getSpawnerManager(): ?SpawnerManager {
         return $this->spawnerManager;
+    }
+
+    /**
+     * 스포너 홀로그램 매니저를 가져옵니다.
+     */
+    public function getSpawnerHologram(): ?SpawnerHologram {
+        return $this->spawnerHologram;
+    }
+
+    /**
+     * 스포너 홀로그램 매니저를 설정합니다.
+     */
+    public function setSpawnerHologram(SpawnerHologram $hologram): void {
+        $this->spawnerHologram = $hologram;
     }
 
     public function getRandom() : Random {

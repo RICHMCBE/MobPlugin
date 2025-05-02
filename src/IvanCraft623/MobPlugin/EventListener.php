@@ -37,6 +37,7 @@ use pocketmine\event\block\BlockPlaceEvent;
 use pocketmine\event\entity\EntityDeathEvent;
 use pocketmine\event\entity\EntityDespawnEvent;
 use pocketmine\event\Listener;
+use pocketmine\event\player\PlayerInteractEvent;
 use pocketmine\math\Vector3;
 use pocketmine\scheduler\ClosureTask;
 use pocketmine\world\particle\BlockBreakParticle;
@@ -110,6 +111,42 @@ class EventListener implements Listener {
 
 		return $e;
 	}
+
+    /**
+     * 플레이어 상호작용 이벤트 처리
+     * @priority HIGHEST
+     */
+    public function onPlayerInteract(PlayerInteractEvent $event): void {
+        // 우클릭(USE) 액션만 처리
+        if ($event->getAction() !== PlayerInteractEvent::RIGHT_CLICK_BLOCK) {
+            return;
+        }
+
+        $block = $event->getBlock();
+        $player = $event->getPlayer();
+        $position = $block->getPosition();
+
+        // 스포너 홀로그램 매니저 가져오기
+        $spawnerHologram = $this->plugin->getSpawnerHologram();
+        if ($spawnerHologram !== null) {
+            // 스포너 ID 확인
+            $spawnerManager = $this->plugin->getSpawnerManager();
+            if ($spawnerManager !== null) {
+                $spawnerId = $spawnerManager->findSpawnerByPosition(
+                    $position->getFloorX(),
+                    $position->getFloorY(),
+                    $position->getFloorZ(),
+                    $position->getWorld()->getFolderName()
+                );
+
+                // 스포너인 경우 홀로그램 표시 및 이벤트 취소
+                if ($spawnerId !== null) {
+                    $spawnerHologram->onSpawnerInteract($player, $position);
+                    $event->cancel(); // 원래 이벤트를 취소하여 보호 플러그인의 상호작용 제한을 우회
+                }
+            }
+        }
+    }
 
     /**
      * 블록 파괴 이벤트 처리
