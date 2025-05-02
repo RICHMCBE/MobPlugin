@@ -46,7 +46,6 @@ use pocketmine\scheduler\TaskHandler;
 use pocketmine\scheduler\TaskScheduler;
 use pocketmine\utils\Config;
 use pocketmine\world\Position;
-use pocketmine\world\World;
 
 class SpawnerManager {
 
@@ -55,6 +54,8 @@ class SpawnerManager {
     private TaskScheduler $scheduler;
     private array $spawners = [];
     private array $activeTasks = [];
+    private array $spawningLocks = [];
+    private array $nextSpawnTimes = [];
 
     public function __construct(MobPlugin $plugin) {
         $this->plugin = $plugin;
@@ -70,55 +71,6 @@ class SpawnerManager {
         $this->loadSpawners();
     }
 
-    /**
-     * OP 관리자에게 스포너 위치 표시
-     */
-    public function showSpawnerLocationsToOps() : void {
-        $server = $this->plugin->getServer();
-
-        // 모든 월드의 OP 관리자들을 확인
-        foreach ($server->getWorldManager()->getWorlds() as $world) {
-            foreach ($world->getPlayers() as $player) {
-                // OP 권한 체크
-                if ($player->hasPermission("mobplugin.admin")) {
-                    $this->highlightNearbySpawners($player);
-                }
-            }
-        }
-    }
-
-    private function highlightNearbySpawners(Player $player) : void {
-        // OP 권한 체크 및 디버깅
-        $isOp = $this->plugin->getServer()->isOp($player->getName());
-        var_dump('Player: ' . $player->getName(), 'Is OP: ' . ($isOp ? 'true' : 'false'));
-
-        // OP 권한이 없으면 함수 종료
-        if (!$isOp) {
-            return;
-        }
-
-        $playerPos = $player->getPosition();
-        $world = $player->getWorld();
-
-        // 현재 플레이어의 월드 이름과 일치하는 스포너만 확인
-        foreach ($this->spawners as $spawnerId => $spawner) {
-            // 현재 월드의 스포너만 확인
-            if ($spawner['world'] === $world->getFolderName()) {
-                $spawnerPos = new Position($spawner['x'], $spawner['y'], $spawner['z'], $world);
-                $distance = $playerPos->distance($spawnerPos);
-
-                // 20블록 반경 이내 스포너만 표시
-                if ($distance <= 20) {
-                    // 새로운 FloatingText 관리자를 사용하여 홀로그램 추가
-                    $floatingTextManager = new SpawnerFloatingTextManager($this->plugin);
-                    $floatingTextManager->add($player, $spawnerPos, $spawner);
-
-                    // 스포너 정보 디버깅
-                    var_dump('Spawner Found', 'Spawner ID: ' . $spawnerId, 'Distance: ' . $distance);
-                }
-            }
-        }
-    }
 
     /**
      * 모든 스포너 데이터를 불러옵니다.
@@ -239,6 +191,9 @@ class SpawnerManager {
         $spawner = $this->spawners[$id];
         $spawnRate = $spawner['spawn_rate'] ?? 30; // 초 단위
 
+        // 초기 다음 스폰 시간 설정
+        $this->nextSpawnTimes[$id] = time() + $spawnRate;
+
         // 새 스폰 태스크 등록
         $task = new SpawnerTask($this, $id);
         $taskHandler = $this->scheduler->scheduleRepeatingTask($task, $spawnRate * 20); // ticks로 변환 (1초 = 20틱)
@@ -259,97 +214,240 @@ class SpawnerManager {
     }
 
     /**
+     * 다음 스폰 시간을 업데이트합니다.
+     */
+    public function updateNextSpawnTime(int $spawnerId, int $time) : void {
+        $this->nextSpawnTimes[$spawnerId] = $time;
+    }
+
+    /**
+     * 위치로 스포너를 찾습니다.
+     */
+    public function findSpawnerByPosition(int $x, int $y, int $z, string $worldName) : ?int {
+        foreach ($this->spawners as $id => $spawner) {
+            if ($spawner['x'] === $x &&
+                $spawner['y'] === $y &&
+                $spawner['z'] === $z &&
+                $spawner['world'] === $worldName) {
+                return (int) $id;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * 몬스터를 스폰합니다.
      */
     public function spawnEntity(int $spawnerId) : bool {
+        // 이미 스폰 작업 중인 경우 중복 실행 방지
+        if (isset($this->spawningLocks[$spawnerId]) && $this->spawningLocks[$spawnerId] === true) {
+            return false;
+        }
+
         if (!isset($this->spawners[$spawnerId])) {
             return false;
         }
 
-        $spawner = $this->spawners[$spawnerId];
-        $worldName = $spawner['world'];
-        $world = $this->plugin->getServer()->getWorldManager()->getWorldByName($worldName);
+        // 스폰 작업 락 설정
+        $this->spawningLocks[$spawnerId] = true;
 
-        if ($world === null) {
-            return false;
-        }
+        try {
+            $spawner = $this->spawners[$spawnerId];
+            $worldName = $spawner['world'];
+            $world = $this->plugin->getServer()->getWorldManager()->getWorldByName($worldName);
 
-        // 현재 스폰된 엔티티 수 확인
-        $currentCount = count($spawner['spawned_entities'] ?? []);
-        if ($currentCount >= $spawner['max_mobs']) {
-            // 이미 최대 수만큼 스폰되었음
-            return false;
-        }
-
-        // 청크가 로드되었는지 확인
-        if (!$world->isChunkLoaded($spawner['x'] >> 4, $spawner['z'] >> 4)) {
-            return false;
-        }
-
-        // 플레이어가 근처에 있는지 확인 (24블록 이내)
-        $nearbyPlayers = false;
-        foreach ($world->getPlayers() as $player) {
-            $distance = $player->getPosition()->distance(new Position($spawner['x'], $spawner['y'], $spawner['z'], $world));
-            if ($distance <= 24) {
-                $nearbyPlayers = true;
-                break;
+            if ($world === null) {
+                return false;
             }
+
+            // 현재 스폰된 엔티티 수 확인 (배열 필터링으로 유효한 ID만 카운트)
+            $validEntityIds = [];
+            foreach ($spawner['spawned_entities'] ?? [] as $entityId) {
+                $foundEntity = false;
+                foreach ($world->getEntities() as $entity) {
+                    if ($entity->getId() === $entityId && $entity->isAlive()) {
+                        $validEntityIds[] = $entityId;
+                        $foundEntity = true;
+                        break;
+                    }
+                }
+            }
+
+            $this->spawners[$spawnerId]['spawned_entities'] = $validEntityIds;
+            $this->saveSpawners(); // 엔티티 목록 업데이트 즉시 저장
+
+            $currentCount = count($validEntityIds);
+
+            if ($currentCount >= $spawner['max_mobs']) {
+                // 이미 최대 수만큼 스폰되었음
+                return false;
+            }
+
+            // 청크가 로드되었는지 확인
+            if (!$world->isChunkLoaded($spawner['x'] >> 4, $spawner['z'] >> 4)) {
+                return false;
+            }
+
+            // 플레이어가 근처에 있는지 확인 (24블록 이내)
+            $nearbyPlayers = false;
+            foreach ($world->getPlayers() as $player) {
+                $distance = $player->getPosition()->distance(new Position($spawner['x'], $spawner['y'], $spawner['z'], $world));
+                if ($distance <= 24) {
+                    $nearbyPlayers = true;
+                    break;
+                }
+            }
+
+            if (!$nearbyPlayers) {
+                return false;
+            }
+
+            // 엔티티 맵
+            $entityMap = [
+                "cow" => Cow::class,
+                "chicken" => Chicken::class,
+                "pig" => Pig::class,
+                "sheep" => Sheep::class,
+                "mooshroom" => MooshroomCow::class,
+                "bat" => Bat::class,
+                "spider" => Spider::class,
+                "cavespider" => CaveSpider::class,
+                "creeper" => Creeper::class,
+                "enderman" => Enderman::class,
+                "endermite" => Endermite::class,
+                "slime" => Slime::class,
+                "irongolem" => IronGolem::class,
+                "snowgolem" => SnowGolem::class,
+            ];
+
+            if (!isset($entityMap[$spawner['type']])) {
+                return false;
+            }
+
+            // 약간의 무작위 오프셋을 추가하여 겹치지 않게 스폰
+            $offsetX = mt_rand(-30, 30) / 10;
+            $offsetZ = mt_rand(-30, 30) / 10;
+
+            $className = $entityMap[$spawner['type']];
+            $position = new Position($spawner['x'] + $offsetX, $spawner['y'], $spawner['z'] + $offsetZ, $world);
+
+            // 안전한 스폰 위치 찾기
+            $safePosition = $this->findSafeSpawnLocation($position);
+
+            // 엔티티 생성 및 스폰
+            $location = new Location(
+                $safePosition->x,
+                $safePosition->y,
+                $safePosition->z,
+                $safePosition->getWorld(),
+                0, // yaw (회전 각도)
+                0  // pitch (기울기 각도)
+            );
+            $entity = new $className($location);
+            $entity->spawnToAll();
+
+            // 스폰된 엔티티 추적
+            $entityId = $entity->getId();
+            $this->spawners[$spawnerId]['spawned_entities'][] = $entityId;
+            $this->saveSpawners();
+
+            return true;
+        } finally {
+            // 스폰 작업 락 해제 (성공 여부와 관계없이)
+            $this->spawningLocks[$spawnerId] = false;
+        }
+    }
+
+    /**
+     * 플레이어가 스포너 블록을 파괴할 때 호출됩니다.
+     * 오피인 경우 스포너를 제거하고 이벤트를 취소합니다.
+     */
+    public function onSpawnerBreak(Position $position, Player $player): bool {
+        // 스포너 ID 찾기
+        $spawnerId = $this->findSpawnerByPosition(
+            $position->getFloorX(),
+            $position->getFloorY(),
+            $position->getFloorZ(),
+            $position->getWorld()->getFolderName()
+        );
+
+        if ($spawnerId === null) {
+            return false; // 스포너가 없음
         }
 
-        if (!$nearbyPlayers) {
-            return false;
+        // 플레이어가 오피인지 확인 (Server 클래스의 isOp 사용)
+        if ($this->plugin->getServer()->isOp($player->getName())) {
+            // 스포너 제거
+            $this->removeSpawner($spawnerId);
+
+            // 스포너가 제거됐다는 메시지 표시
+            $player->sendMessage("§a성공적으로 몹 스포너를 제거했습니다.");
+
+            // 이벤트 취소하기 위해 true 반환
+            return true;
         }
 
-        // 엔티티 맵
-        $entityMap = [
-            "cow" => Cow::class,
-            "chicken" => Chicken::class,
-            "pig" => Pig::class,
-            "sheep" => Sheep::class,
-            "mooshroom" => MooshroomCow::class,
-            "bat" => Bat::class,
-            "spider" => Spider::class,
-            "cavespider" => CaveSpider::class,
-            "creeper" => Creeper::class,
-            "enderman" => Enderman::class,
-            "endermite" => Endermite::class,
-            "slime" => Slime::class,
-            "irongolem" => IronGolem::class,
-            "snowgolem" => SnowGolem::class,
+        return false; // 오피가 아니면 변경 없음
+    }
+
+    /**
+     * 스포너의 다음 스폰까지 남은 시간(초)을 반환합니다.
+     */
+    public function getTimeUntilNextSpawn(int $spawnerId) : ?int {
+        if (!isset($this->nextSpawnTimes[$spawnerId])) {
+            return null;
+        }
+
+        $timeLeft = $this->nextSpawnTimes[$spawnerId] - time();
+        return max(0, $timeLeft);
+    }
+
+    /**
+     * 스포너 정보를 문자열로 반환합니다.
+     */
+    public function getSpawnerInfo(int $spawnerId) : ?string {
+        if (!isset($this->spawners[$spawnerId])) {
+            return null;
+        }
+
+        $spawner = $this->spawners[$spawnerId];
+        $timeLeft = $this->getTimeUntilNextSpawn($spawnerId);
+
+        if ($timeLeft === null) {
+            $timeLeft = $spawner['spawn_rate'];
+        }
+
+        $mobType = $spawner['type'];
+        $currentCount = count($spawner['spawned_entities'] ?? []);
+        $maxMobs = $spawner['max_mobs'];
+        $spawnRate = $spawner['spawn_rate'];
+
+        // 한국어 몹 이름 변환
+        $koreanMobNames = [
+            "cow" => "소",
+            "chicken" => "닭",
+            "pig" => "돼지",
+            "sheep" => "양",
+            "mooshroom" => "무시룸",
+            "bat" => "박쥐",
+            "spider" => "거미",
+            "cavespider" => "동굴거미",
+            "creeper" => "크리퍼",
+            "enderman" => "엔더맨",
+            "endermite" => "엔더진",
+            "slime" => "슬라임",
+            "irongolem" => "철골렘",
+            "snowgolem" => "눈골렘"
         ];
 
-        if (!isset($entityMap[$spawner['type']])) {
-            return false;
-        }
+        $koreanMobName = $koreanMobNames[$mobType] ?? $mobType;
 
-        // 약간의 무작위 오프셋을 추가하여 겹치지 않게 스폰
-        $offsetX = mt_rand(-30, 30) / 10;
-        $offsetZ = mt_rand(-30, 30) / 10;
-
-        $className = $entityMap[$spawner['type']];
-        $position = new Position($spawner['x'] + $offsetX, $spawner['y'], $spawner['z'] + $offsetZ, $world);
-
-        // 안전한 스폰 위치 찾기
-        $safePosition = $this->findSafeSpawnLocation($position);
-
-        // 엔티티 생성 및 스폰
-        $location = new Location(
-            $safePosition->x,
-            $safePosition->y,
-            $safePosition->z,
-            $safePosition->getWorld(),
-            0, // yaw (회전 각도)
-            0  // pitch (기울기 각도)
-        );
-        $entity = new $className($location);
-        $entity->spawnToAll();
-
-        // 스폰된 엔티티 추적
-        $entityId = $entity->getId();
-        $this->spawners[$spawnerId]['spawned_entities'][] = $entityId;
-        $this->saveSpawners();
-
-        return true;
+        return "§e=== 몹 스포너 정보 ===\n" .
+            "§f몹 종류: §a" . $koreanMobName . "\n" .
+            "§f현재/최대: §a" . $currentCount . "/" . $maxMobs . "\n" .
+            "§f스폰 주기: §a" . $spawnRate . "초\n" .
+            "§f다음 스폰까지: §a" . $timeLeft . "초";
     }
 
     /**
