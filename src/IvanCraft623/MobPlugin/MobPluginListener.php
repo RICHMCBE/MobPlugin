@@ -3,14 +3,12 @@ declare(strict_types=1);
 
 namespace IvanCraft623\MobPlugin;
 
-use IvanCraft623\MobPlugin\command\SpawnCommand;
-use IvanCraft623\MobPlugin\command\SpawnerCommand;
 use IvanCraft623\MobPlugin\spawner\SpawnerManager;
+use IvanCraft623\MobPlugin\spawner\SpawnerHologram;
 use pocketmine\event\Listener;
 use pocketmine\event\player\PlayerInteractEvent;
 use pocketmine\event\player\PlayerChatEvent;
 use pocketmine\event\block\BlockBreakEvent;
-use pocketmine\plugin\PluginBase;
 use pocketmine\utils\TextFormat;
 
 class MobPluginListener implements Listener {
@@ -18,9 +16,21 @@ class MobPluginListener implements Listener {
     private array $spawnerSetupMode = [];
     private array $continuousSpawnerSetup = [];
     private array $recentlyPlacedSpawners = []; // 최근에 설치된 스포너를 추적
+    private SpawnerHologram $hologram;
 
-    public function __construct(SpawnerManager $spawnerManager) {
+    public function __construct(MobPlugin $plugin, SpawnerManager $spawnerManager) {
         $this->spawnerManager = $spawnerManager;
+        $this->hologram = new SpawnerHologram($plugin);
+
+        // 홀로그램 주기적 업데이트 (1초마다)
+        $plugin->getScheduler()->scheduleRepeatingTask(
+            new \pocketmine\scheduler\ClosureTask(
+                function() {
+                    $this->hologram->updateAllHolograms();
+                }
+            ),
+            20 // 1초마다
+        );
     }
 
     /**
@@ -88,6 +98,15 @@ class MobPluginListener implements Listener {
             $block->getPosition()->getFloorY() . ":" .
             $block->getPosition()->getFloorZ() . ":" .
             $block->getPosition()->getWorld()->getFolderName();
+
+        // 우클릭 이벤트인 경우 스포너 정보 확인
+        if ($event->getAction() === PlayerInteractEvent::RIGHT_CLICK_BLOCK) {
+            // 홀로그램으로 스포너 정보 표시 시도
+            if ($this->hologram->onSpawnerInteract($player, $block->getPosition())) {
+                $event->cancel(); // 스포너 정보 표시 후 이벤트 취소
+                return;
+            }
+        }
 
         // 이 위치에 최근에 스포너가 생성되었는지 확인
         if($this->isRecentlyPlaced($locationKey)) {
@@ -185,5 +204,12 @@ class MobPluginListener implements Listener {
         if($this->isInSpawnerSetup($playerName)) {
             $event->cancel();
         }
+    }
+
+    /**
+     * 홀로그램 객체를 반환합니다.
+     */
+    public function getHologram(): SpawnerHologram {
+        return $this->hologram;
     }
 }
