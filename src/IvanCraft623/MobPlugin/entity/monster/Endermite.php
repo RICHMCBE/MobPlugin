@@ -95,9 +95,12 @@ class Endermite extends Monster {
 		return 0.25;
 	}
 
+    /*
+    [체리칩 지시] 몹 수명: 무조건 5분
 	public function getMaxLifeTime() : int{
 		return self::MAX_LIFE;
 	}
+    */
 
 	public function getXpDropAmount() : int{
 		if ($this->hasBeenDamagedByPlayer()) {

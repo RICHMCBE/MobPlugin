@@ -216,11 +216,11 @@ abstract class Mob extends Living {
 	/**
 	 * Returns maximun time in ticks that this entity can live or -1 if undefined.
 	 */
-	public function getMaxLifeTime() : int{
-		return -1;
+	final public function getMaxLifeTime() : int{ // [체리칩 지시] 몹 수명: 무조건 5분 -> 재정의 못하도록 final로 변경
+		return 6000;
 	}
 
-	public function getAttackDamage() : float{
+    public function getAttackDamage() : float{
 		return $this->attackDamageAttr->getValue();
 	}
 
@@ -243,6 +243,7 @@ abstract class Mob extends Living {
 	public function setFollowRange(float $range) : void{
 		$this->followRangeAttr->setValue($range);
 	}
+
 	public function getMaxFallDistance() : int{
 		$defaultMax = parent::getMaxFallDistance();
 		if ($this->targetId === null) {
@@ -269,16 +270,21 @@ abstract class Mob extends Living {
 	/**
 	 * Returns whether this entity is forced to not despawn naturally.
 	 */
-	public function isPersistent() : bool{
-		return $this->isPersistent;
+	final public function isPersistent() : bool{ // [체리칩 지시] 몹 수명: 무조건 5분 -> 재정의 못하도록 final로 변경
+        return false;
+
+		// return $this->isPersistent;
 	}
 
 	/**
 	 * Returns whether this entity cannot despawn naturally.
 	 */
 	public function isPersistenceRequired() : bool{
+        // [체리칩 지시] 몹 수명: 무조건 5분
+
 		//TODO: check if is passenger
-		return $this->isPersistent() || $this->getNameTag() !== "";
+		//return $this->isPersistent() || $this->getNameTag() !== "";
+        return false;
 	}
 
 	protected function entityBaseTick(int $tickDiff = 1) : bool{
