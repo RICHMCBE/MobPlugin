@@ -100,7 +100,7 @@ class MobPlugin extends PluginBase {
         $this->getServer()->getCommandMap()->register("mobspawner", new SpawnerCommand($this, $this->spawnerManager));
         $this->getServer()->getCommandMap()->register("mobspawncancel", new SpawnerCancelCommand($this));
 
-        $this->getServer()->getPluginManager()->registerEvents(new EventListener(), $this);
+        $this->getServer()->getPluginManager()->registerEvents(new EventListener($this), $this);
 
         // 스포너 관련 이벤트 리스너 등록
         $this->spawnerListener = new MobPluginListener($this->spawnerManager);
@@ -117,6 +117,10 @@ class MobPlugin extends PluginBase {
 
     public function getSpawnerListener(): ?MobPluginListener {
         return $this->spawnerListener;
+    }
+
+    public function getSpawnerManager(): ?SpawnerManager {
+        return $this->spawnerManager;
     }
 
     public function getRandom() : Random {

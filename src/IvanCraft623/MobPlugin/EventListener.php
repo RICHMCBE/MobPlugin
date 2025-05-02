@@ -25,6 +25,7 @@ namespace IvanCraft623\MobPlugin;
 
 use IvanCraft623\MobPlugin\entity\golem\IronGolem;
 use IvanCraft623\MobPlugin\entity\golem\SnowGolem;
+use IvanCraft623\MobPlugin\entity\Mob;
 use IvanCraft623\MobPlugin\pattern\BlockPattern;
 
 use pocketmine\block\BlockTypeIds;
@@ -32,6 +33,8 @@ use pocketmine\block\VanillaBlocks;
 use pocketmine\entity\Entity;
 use pocketmine\entity\Location;
 use pocketmine\event\block\BlockPlaceEvent;
+use pocketmine\event\entity\EntityDeathEvent;
+use pocketmine\event\entity\EntityDespawnEvent;
 use pocketmine\event\Listener;
 use pocketmine\math\Vector3;
 use pocketmine\scheduler\ClosureTask;
@@ -39,6 +42,12 @@ use pocketmine\world\particle\BlockBreakParticle;
 use pocketmine\world\Position;
 
 class EventListener implements Listener {
+
+    private MobPlugin $plugin;
+
+    public function __construct(MobPlugin $plugin) {
+        $this->plugin = $plugin;
+    }
 
 	/**
 	 * @priority HIGH
@@ -100,4 +109,30 @@ class EventListener implements Listener {
 
 		return $e;
 	}
+
+    /**
+     * 엔티티 디스폰 이벤트 처리
+     */
+    public function onEntityDespawn(EntityDespawnEvent $event): void {
+        $entity = $event->getEntity();
+        if ($entity instanceof Mob) {
+            $spawnerManager = $this->plugin->getSpawnerManager();
+            if ($spawnerManager !== null) {
+                $spawnerManager->removeEntity($entity);
+            }
+        }
+    }
+
+    /**
+     * 엔티티 사망 이벤트 처리
+     */
+    public function onEntityDeath(EntityDeathEvent $event): void {
+        $entity = $event->getEntity();
+        if ($entity instanceof Mob) {
+            $spawnerManager = $this->plugin->getSpawnerManager();
+            if ($spawnerManager !== null) {
+                $spawnerManager->removeEntity($entity);
+            }
+        }
+    }
 }
