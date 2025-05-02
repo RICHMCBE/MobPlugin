@@ -102,15 +102,8 @@ class MobPlugin extends PluginBase {
 
         $this->getServer()->getPluginManager()->registerEvents(new EventListener($this), $this);
 
-        // 스포너 관련 이벤트 리스너 등록
-        $this->spawnerListener = new MobPluginListener($this->spawnerManager);
+        $this->spawnerListener = new MobPluginListener($this, $this->spawnerManager);
         $this->getServer()->getPluginManager()->registerEvents($this->spawnerListener, $this);
-
-        // 스포너 하이라이트 태스크 추가 (10초마다)
-        $this->getScheduler()->scheduleRepeatingTask(
-            new SpawnerHighlightTask($this->spawnerManager),
-            10 * 20 // 10초마다
-        );
 
         $this->getLogger()->info("MobPlugin has been enabled!");
     }
