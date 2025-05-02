@@ -48,9 +48,9 @@ class SpawnerCommand extends Command {
 
         // 주요 스포너 명령어 오버로드 생성
         $mainOverload = CommandCore::createOverload(
-            new EnumParameter("mobType", $mobTypeEnum, false),
-            new IntParameter("spawnRate", true),
-            new IntParameter("maxMobs", true)
+            new EnumParameter("몹 종류", $mobTypeEnum, false),
+            new IntParameter("스폰주기", true),
+            new IntParameter("최대 몹수", true)
         );
 
         // 명령어 오버로드 등록
