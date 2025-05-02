@@ -35,6 +35,7 @@ class SpawnerHologram {
 
     /**
      * 모든 스포너 홀로그램을 업데이트합니다.
+     * 이 메서드는 이제 활성화된 홀로그램이 있는 경우에만 정보를 업데이트합니다.
      */
     public function updateAllHolograms(): void {
         $spawnerManager = $this->plugin->getSpawnerManager();
@@ -42,16 +43,35 @@ class SpawnerHologram {
             return;
         }
 
-        // 모든 스포너 정보 업데이트
-        foreach ($spawnerManager->getAllSpawners() as $spawnerId => $spawner) {
-            $this->updateSpawnerInfo($spawnerId);
-        }
+        // 모든 플레이어의 홀로그램 업데이트 - 활성화된 홀로그램만
+        foreach ($this->holograms as $playerName => $holograms) {
+            $player = $this->plugin->getServer()->getPlayerExact($playerName);
+            if ($player === null) {
+                unset($this->holograms[$playerName]);
+                continue;
+            }
 
-        // 모든 플레이어의 홀로그램 업데이트
-        foreach ($this->plugin->getServer()->getOnlinePlayers() as $player) {
-            $playerName = $player->getName();
-            if (isset($this->activeHologramPlayers[$playerName])) {
-                $this->updateHologramsForPlayer($player);
+            // 각 홀로그램의 정보만 업데이트
+            foreach ($holograms as $entityId => $hologramData) {
+                $spawnerId = $hologramData['spawnerId'];
+                $info = $this->updateSpawnerInfo($spawnerId);
+
+                if ($info !== null) {
+                    // 홀로그램 텍스트 업데이트
+                    $metadata = new EntityMetadataCollection();
+                    $metadata->setString(EntityMetadataProperties::NAMETAG, $info);
+
+                    $pk = SetActorDataPacket::create(
+                        $entityId,
+                        $metadata->getAll(),
+                        new PropertySyncData([], []),
+                        0
+                    );
+                    $player->getNetworkSession()->sendDataPacket($pk);
+
+                    // 캐시 업데이트
+                    $this->holograms[$playerName][$entityId]['text'] = $info;
+                }
             }
         }
     }
@@ -153,26 +173,31 @@ class SpawnerHologram {
 
     /**
      * 플레이어에게 홀로그램을 보여줍니다.
+     * @return int 생성된 엔티티 ID
      */
-    private function showHologram(Player $player, Vector3 $position, string $text, int $spawnerId): void {
+    private function showHologram(Player $player, Vector3 $position, string $text, int $spawnerId): int {
         $playerName = $player->getName();
 
         // 고유한 엔티티 ID 생성
         $entityId = Entity::nextRuntimeId();
 
         // 홀로그램 데이터 저장
+        if (!isset($this->holograms[$playerName])) {
+            $this->holograms[$playerName] = [];
+        }
+
         $this->holograms[$playerName][$entityId] = [
             'position' => $position,
             'text' => $text,
             'spawnerId' => $spawnerId
         ];
 
-        // 아머 스탠드 엔티티 생성
+        // 아머 스탠드 엔티티 생성 (나머지 코드 동일)
         $pk = AddActorPacket::create(
             $entityId,               // actorUniqueId
             $entityId,               // actorRuntimeId
             EntityIds::XP_ORB,       // type
-            $position->add(0.5, 0, 0.5), // position
+            $position, // position
             null,                    // motion
             0.0,                    // pitch
             0.0,                    // yaw
@@ -189,6 +214,8 @@ class SpawnerHologram {
             [] // links
         );
         $player->getNetworkSession()->sendDataPacket($pk);
+
+        return $entityId;
     }
 
     /**
@@ -200,32 +227,8 @@ class SpawnerHologram {
     }
 
     /**
-     * 플레이어의 홀로그램 보기 상태를 토글합니다.
-     */
-    public function toggleHologramsForPlayer(Player $player): bool {
-        $playerName = $player->getName();
-        if (isset($this->activeHologramPlayers[$playerName])) {
-            unset($this->activeHologramPlayers[$playerName]);
-
-            // 홀로그램 제거
-            if (isset($this->holograms[$playerName])) {
-                foreach ($this->holograms[$playerName] as $entityId => $data) {
-                    $this->removeHologram($player, $entityId);
-                }
-                unset($this->holograms[$playerName]);
-            }
-
-            return false; // 홀로그램 비활성화됨
-        } else {
-            $this->activeHologramPlayers[$playerName] = true;
-            $this->updateHologramsForPlayer($player);
-            return true; // 홀로그램 활성화됨
-        }
-    }
-
-    /**
      * 플레이어가 스포너 블록을 우클릭했을 때 호출됩니다.
-     * 월드 보호 설정에 관계없이 항상 홀로그램을 표시합니다.
+     * 월드 보호 설정에 관계없이 클릭한 스포너의 정보만 표시합니다.
      */
     public function onSpawnerInteract(Player $player, Position $position): bool {
         // 스포너 매니저 가져오기
@@ -246,28 +249,58 @@ class SpawnerHologram {
             return false;
         }
 
-        // 플레이어에게 홀로그램 표시
         $playerName = $player->getName();
-        $this->activeHologramPlayers[$playerName] = true;
-        $this->updateHologramsForPlayer($player);
 
-        // 5초 후 홀로그램 자동 숨김
-        $this->plugin->getScheduler()->scheduleDelayedTask(new ClosureTask(
-            function() use ($playerName): void {
-                $player = $this->plugin->getServer()->getPlayerExact($playerName);
-                if ($player !== null && isset($this->activeHologramPlayers[$playerName])) {
-                    unset($this->activeHologramPlayers[$playerName]);
+        // 고유한 식별자 생성 - 스포너의 위치와 월드를 결합
+        $spawnerKey = $position->getFloorX() . ":" .
+            $position->getFloorY() . ":" .
+            $position->getFloorZ() . ":" .
+            $position->getWorld()->getFolderName();
 
-                    // 홀로그램 제거
-                    if (isset($this->holograms[$playerName])) {
-                        foreach ($this->holograms[$playerName] as $entityId => $data) {
-                            $this->removeHologram($player, $entityId);
-                        }
-                        unset($this->holograms[$playerName]);
-                    }
+        // 이전 홀로그램 찾기 및 제거
+        if (isset($this->holograms[$playerName])) {
+            foreach ($this->holograms[$playerName] as $entityId => $data) {
+                if (isset($data['spawnerKey']) && $data['spawnerKey'] === $spawnerKey) {
+                    // 이 스포너의 기존 홀로그램 제거
+                    $this->removeHologram($player, $entityId);
+                    unset($this->holograms[$playerName][$entityId]);
                 }
             }
-        ), 5 * 20); // 5초 후 (20틱 = 1초)
+        }
+
+        // 새 홀로그램 배열 초기화 (없을 경우)
+        if (!isset($this->holograms[$playerName])) {
+            $this->holograms[$playerName] = [];
+        }
+
+        // 클릭한 스포너의 정보 표시
+        $info = $this->updateSpawnerInfo($spawnerId);
+        if ($info !== null) {
+            $entityId = $this->showHologram($player, $position->add(0.5, 1.5, 0.5), $info, $spawnerId);
+
+            // 스포너 키 저장
+            $this->holograms[$playerName][$entityId]['spawnerKey'] = $spawnerKey;
+
+            // 디버그 메시지
+            $this->plugin->getLogger()->debug("Created hologram ID: $entityId for player $playerName at $spawnerKey");
+
+            // 5초 후 홀로그램 자동 숨김
+            $this->plugin->getScheduler()->scheduleDelayedTask(new ClosureTask(
+                function() use ($playerName, $entityId, $spawnerKey): void {
+                    $player = $this->plugin->getServer()->getPlayerExact($playerName);
+                    if ($player !== null && isset($this->holograms[$playerName][$entityId])) {
+                        $this->plugin->getLogger()->debug("Removing hologram ID: $entityId for player $playerName at $spawnerKey");
+                        $this->removeHologram($player, $entityId);
+                        unset($this->holograms[$playerName][$entityId]);
+
+                        // 플레이어의 홀로그램이 모두 제거되면 배열도 제거
+                        if (empty($this->holograms[$playerName])) {
+                            unset($this->holograms[$playerName]);
+                        }
+                    }
+                }
+            ), 5 * 20); // 5초 후 (20틱 = 1초)
+        }
 
         return true;
     }
