@@ -40,7 +40,7 @@ class IronGolemRepairSound implements Sound{
 			-1,
 			$this->entity::getNetworkTypeId(),
 			false,
-			false
+			false,
 		)];
 	}
 }
